@@ -2,28 +2,41 @@
 
 Full-stack CRUD + analytics web app over the US YouTube trending dataset.
 
-- **Database:** PostgreSQL 16 (Docker), schema in `youtube_trending_hub_database.sql`
+- **Database:** Supabase Cloud (PostgreSQL) — schema in `youtube_trending_hub_database.sql`
 - **Backend:** FastAPI + asyncpg (`backend/`)
 - **Frontend:** React + TypeScript + Vite + Tailwind + shadcn-style UI + Recharts (`frontend/`)
 - **ETL:** `scripts/load_csv.py` loads `US_Trending.csv` (~16,400 rows)
 
-## Quick start
+## Quick start (Supabase — primary)
 
 Three terminals, in order.
 
-### 1. Database
+### 1. Database (Supabase Cloud)
 
-```bash
-docker compose -f db/docker-compose.yml up -d
-# Apply schema (with seed) to dev and test databases
-docker exec -i yth_db_dev  psql -U postgres -d yth_dev  < youtube_trending_hub_database.sql
-docker exec -i yth_db_test psql -U postgres -d yth_test < youtube_trending_hub_database.sql
-# Load 16,400 rows into dev DB
-source .venv/bin/activate
-pip install pandas psycopg2-binary
-python scripts/load_csv.py
-python scripts/verify_load.py
-```
+One-time setup:
+
+1. In the Supabase dashboard: **Project Settings → Database → Connection string → URI → "Direct connection"**.
+   Copy the URI (`postgresql://postgres:[YOUR-PASSWORD]@db.<project-ref>.supabase.co:5432/postgres`)
+   and replace `[YOUR-PASSWORD]` with your DB password.
+
+2. Apply the schema. Pick one:
+   - **Dashboard:** SQL Editor → New query → paste `youtube_trending_hub_database.sql` → Run.
+   - **CLI:** `psql '<URI>' -f youtube_trending_hub_database.sql`
+
+3. Set `backend/.env` (copy from `backend/.env.example` and fill in the URI):
+   ```
+   DATABASE_URL=postgresql://postgres:PASSWORD@db.<project-ref>.supabase.co:5432/postgres
+   TEST_DATABASE_URL=postgresql://postgres:PASSWORD@db.<test-project-ref>.supabase.co:5432/postgres
+   CORS_ORIGINS=http://localhost:5173
+   ```
+
+4. Load the CSV (~30–60s over the network):
+   ```bash
+   source .venv/bin/activate
+   pip install pandas psycopg2-binary
+   DATABASE_URL='<your Supabase URI>' python scripts/load_csv.py
+   DATABASE_URL='<your Supabase URI>' python scripts/verify_load.py
+   ```
 
 ### 2. Backend
 
@@ -81,6 +94,39 @@ App: http://localhost:5173
 | GET | `/api/analytics/engagement` | Query 2 (lines 335–345) |
 | GET | `/healthz` | `SELECT 1` |
 
+## Local fallback (Docker Postgres)
+
+If you can't reach Supabase or want a fully offline dev setup:
+
+```bash
+docker compose -f db/docker-compose.yml up -d
+# Apply schema (with seed) to dev and test databases
+docker exec -i yth_db_dev  psql -U postgres -d yth_dev  < youtube_trending_hub_database.sql
+docker exec -i yth_db_test psql -U postgres -d yth_test < youtube_trending_hub_database.sql
+# Load 16,400 rows
+source .venv/bin/activate
+pip install pandas psycopg2-binary
+python scripts/load_csv.py    # uses default Docker DSN if DATABASE_URL is unset
+python scripts/verify_load.py
+```
+
+Then in `backend/.env` use the Docker DSNs (commented out in `.env.example`).
+
+## Notes on Supabase
+
+- **Connection type:** the quick-start uses the **Direct connection** on port `5432`. If you start hitting connection limits, switch the URI to the **Transaction pooler** on port `6543`. With the pooler, asyncpg needs `?statement_cache_size=0` appended (transaction-mode poolers don't support prepared statements).
+- **Test DB:** `pytest` truncates `trending_videos` between every test. **This project uses Docker `db_test` on `:5433` for tests** (fast, no second cloud project needed). Bring it up with `docker compose -f db/docker-compose.yml up -d db_test` and apply the schema once. To switch tests to a second Supabase project instead, just edit `TEST_DATABASE_URL` in `backend/.env`. Never point it at your dev project.
+- **Secrets:** `backend/.env` is gitignored. Don't commit the password.
+
 ## Deployment
 
-Local-only with a recorded demo video (proposal-sanctioned fallback). All three components run on the developer machine; Docker Compose handles Postgres.
+Course-grade deployment is local with a recorded demo video. The "Quick start (Supabase — primary)" path above is the same setup you'd use for a Render/Vercel deploy: only the host of the frontend's `VITE_API_BASE_URL` and the backend's `CORS_ORIGINS` change.
+
+## Contributors
+
+
+| Name | Email |
+|------|-------|
+| Dev Patel | dap3@iu.edu |
+| Aryan Dhuru | adhuru@iu.edu |
+| Nimish Jain | nj62@iu.edu |
