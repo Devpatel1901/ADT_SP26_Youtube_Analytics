@@ -20,7 +20,6 @@ backend/.env
 # Editors
 .vscode/
 .idea/
-.claude/
 *.docx
 *.csv
 *.sql
